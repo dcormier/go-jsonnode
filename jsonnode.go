@@ -2,11 +2,13 @@ package jsonnode
 
 import "encoding/json"
 
-// TODO: In the future, this should support creating/modifying objects to marshal to JSON
-//var _ json.Marshaler = (*JSONNode)(nil)
+var _ json.Marshaler = (*JSONNode)(nil)
 var _ json.Unmarshaler = (*JSONNode)(nil)
 
 // JSONNode represents a JSON node to be marshalled (TODO), or that has been unmarshalled.
+// A JSONNode can be a whole JSON object that can be marshalled to JSON (TODO),
+// or that has been unmarshalled from JSON.
+// It can also represent a specific member (of any type) in a JSON object.
 type JSONNode struct {
 	parent    *JSONNode
 	fieldName string
@@ -57,7 +59,8 @@ func (jn *JSONNode) UnmarshalJSON(data []byte) error {
 }
 
 // Get gets specified child field of this JSONNode.
-// If the field exists, a *JSONNode will be returned. Otherwise, nil.
+// If the field exists (even if it has no value), a *JSONNode will be returned.
+// Otherwise, nil will be returned (including if this *JSONNode instance is nil).
 func (jn *JSONNode) Get(fieldName string) *JSONNode {
 	if jn == nil {
 		return nil
@@ -81,7 +84,7 @@ func (jn *JSONNode) Get(fieldName string) *JSONNode {
 	return child
 }
 
-// Value gets the raw value of the current node
+// Value gets the raw value of this node
 func (jn *JSONNode) Value() interface{} {
 	if jn == nil {
 		return nil

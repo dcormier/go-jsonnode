@@ -60,7 +60,11 @@ func TestJSONNode(t *testing.T) {
 	toMarshal["int32"] = int32(-12345)
 	toMarshal["uint32"] = uint32(12345)
 	toMarshal["float32"] = float32(-123.45)
-	toMarshal["time"] = time.Now().In(time.FixedZone("", -5*60*60))
+
+	when, err := time.Parse(time.RFC3339, "2017-06-28T18:00:00-04:00")
+	require.NoError(t, err)
+
+	toMarshal["time"] = when
 
 	jsonBytes, err := json.Marshal(toMarshal)
 	require.NoError(t, err)
@@ -73,15 +77,42 @@ func TestJSONNode(t *testing.T) {
 
 		t.Parallel()
 
-		var unmarshalled interface{}
+		var unmarshalled map[string]interface{}
 		err = json.Unmarshal(jsonBytes, &unmarshalled)
 		require.NoError(t, err)
 
 		t.Logf("Unmarshalled (%T): %+[1]v", unmarshalled)
 
-		for k, v := range unmarshalled.(map[string]interface{}) {
+		for k, v := range unmarshalled {
 			t.Logf(`%q (%T): %+[2]v`, k, v)
 		}
+	})
+
+	t.Run("handle nil politely", func(t *testing.T) {
+		t.Parallel()
+
+		var jn *JSONNode
+
+		// Make sure trying to call Get on a nil instance doesn't panic
+		require.NotPanics(t, func() {
+			jn.Get("does not exist")
+		})
+
+		// Make sure trying to call Value on a nil instance doesn't panic
+		require.NotPanics(t, func() {
+			val := jn.Value()
+			require.Nil(t, val)
+		})
+
+		// Now with an actual instance
+
+		jn = new(JSONNode)
+		err = json.Unmarshal(jsonBytes, jn)
+		require.NoError(t, err)
+
+		// Non-existant field on the root of the object
+		node := jn.Get("does not exist")
+		require.Nil(t, node)
 	})
 
 	t.Run("simple unmarshal", func(t *testing.T) {
@@ -92,37 +123,24 @@ func TestJSONNode(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, jn.data)
 
-		// Non-existant field on the root of the object
-		node := jn.Get("does not exist")
-		require.Nil(t, node)
-
-		require.NotPanics(t, func() {
-			// node is nil and this shouldn't panic
-			val := node.Value()
-			require.Nil(t, val)
-		})
-
-		require.NotPanics(t, func() {
-			// This also shouldn't panic
-			node = node.Get("also does not exist")
-			require.Nil(t, node)
-		})
-
-		node = jn.Get("int32")
+		node := jn.Get("int32")
 		require.NotNil(t, node)
 
-		val, ok := node.ValueAsNumber()
+		valFloat64, ok := node.ValueAsNumber()
 		require.True(t, ok)
-		require.Equal(t, float64(-12345), val)
+		require.Equal(t, float64(-12345), valFloat64)
 
+		// It isn't a string.
 		valString, ok := node.ValueAsString()
 		require.False(t, ok)
 		require.Zero(t, valString)
 
+		// It isn't a slice.
 		valSlice, ok := node.ValueAsSlice()
 		require.False(t, ok)
 		require.Zero(t, valSlice)
 
+		// It isn't a node that can have children.
 		valNode, ok := node.ValueAsNode()
 		require.False(t, ok)
 		require.Nil(t, valNode)
@@ -130,6 +148,19 @@ func TestJSONNode(t *testing.T) {
 		// Non-existant field on a field that cannot have children
 		node = node.Get("does not exist")
 		require.Nil(t, node)
+
+		valFloat64, ok = jn.Get("uint32").ValueAsNumber()
+		require.True(t, ok)
+		require.Equal(t, float64(12345), valFloat64)
+
+		valFloat64, ok = jn.Get("float32").ValueAsNumber()
+		require.True(t, ok)
+		require.Equal(t, float64(-123.45), valFloat64)
+
+		// JSON just handles time values as strings
+		valString, ok = jn.Get("time").ValueAsString()
+		require.True(t, ok)
+		require.Equal(t, "2017-06-28T18:00:00-04:00", valString)
 	})
 
 	raw := `{
@@ -158,13 +189,15 @@ func TestJSONNode(t *testing.T) {
 		t.Logf("Unmarshalled: %#v", jn)
 		require.NotNil(t, jn.data)
 
-		node := jn.Get("with")
-		require.NotNil(t, node)
+		node0 := jn.Get("with")
+		require.NotNil(t, node0)
 
-		node = node.Get("meat")
-		require.NotNil(t, node)
+		// A child node
+		node1 := node0.Get("meat")
+		require.NotNil(t, node1)
 
-		val := node.Value()
+		// Value of the child node
+		val := node1.Value()
 		require.NotNil(t, val)
 		require.Equal(t, "prosciutto", val)
 	})
@@ -271,14 +304,12 @@ func ExampleJSONNode_thorough() {
 
 	platter := jn.Get("platter")
 	if platter == nil {
-		// There's no platter field
-		return
+		panic(`The "patter" element doesn't exist`)
 	}
 
 	platterVal, ok := platter.ValueAsString()
 	if !ok {
-		// The platter value isn't a string
-		return
+		panic(`The "patter" element isn't a string`)
 	}
 
 	fmt.Printf("Platter: %s\n", platterVal)
@@ -286,7 +317,7 @@ func ExampleJSONNode_thorough() {
 	cheeses := jn.Get("cheeses")
 	if cheeses == nil {
 		// No cheeses. 😢
-		return
+		panic(`The "cheeses" element doesn't exist`)
 	}
 
 	chessesVal, ok := cheeses.ValueAsSlice()
@@ -294,7 +325,7 @@ func ExampleJSONNode_thorough() {
 		// No slice of cheese
 		// (☞ﾟヮﾟ)☞
 		// ☜(ﾟヮﾟ☜)
-		return
+		panic(`The "cheeses" element isn't a JSON array`)
 	}
 
 	fmt.Printf("Cheeses (%d):\n", len(chessesVal))
@@ -303,7 +334,7 @@ func ExampleJSONNode_thorough() {
 		cheese, ok := chessesVal[i].ValueAsString()
 		if !ok {
 			// This isn't cheese.
-			return
+			panic(fmt.Sprintf(`Item %d in "cheeses" JSON array is not a string`, i))
 		}
 
 		fmt.Printf("    %s\n", cheese)
@@ -312,29 +343,29 @@ func ExampleJSONNode_thorough() {
 	with := jn.Get("with")
 	if with == nil {
 		// Nothing with the cheese.
-		return
+		panic(`Element "with" does not exist`)
 	}
 
 	meat := with.Get("meat")
 	if meat == nil {
-		return
+		panic(`Element "meat" does not exist`)
 	}
 
 	meatVal, ok := meat.ValueAsString()
 	if !ok {
-		return
+		panic(`Element "with.meat" is not a string`)
 	}
 
 	fmt.Printf("Meat: %s\n", meatVal)
 
 	fruit := with.Get("fruit")
 	if fruit == nil {
-		return
+		panic(`Element "with.fruit" does not exist`)
 	}
 
 	fruitVal, ok := fruit.ValueAsSlice()
 	if !ok {
-		return
+		panic(`Element "with.fruit" is not a JSON array`)
 	}
 
 	fmt.Printf("Fruit (%d):\n", len(fruitVal))
@@ -342,14 +373,17 @@ func ExampleJSONNode_thorough() {
 	for i := range fruitVal {
 		fruitNode, ok := fruitVal[i].ValueAsNode()
 		if !ok {
-			return
+			panic(fmt.Sprintf(`"with.fruit[%d]" is not a JSON object`, i))
 		}
 
 		fruitType := fruitNode.Get("type")
+		if fruitType == nil {
+			panic(fmt.Sprintf(`"with.fruit[%d].type" does not exist`, i))
+		}
 
 		f, ok := fruitType.ValueAsString()
 		if !ok {
-			return
+			panic(fmt.Sprintf(`"with.fruit[%d].type" is not a string`, i))
 		}
 
 		fmt.Printf("    %s\n", f)
@@ -393,18 +427,17 @@ func ExampleJSONNode_simple() {
 
 	platter, ok := jn.Get("platter").ValueAsString()
 	if !ok {
-		// The platter value isn't a string
-		return
+		panic("The patter value isn't a string")
 	}
 
 	fmt.Printf("Platter: %s\n", platter)
 
 	cheeses, ok := jn.Get("cheeses").ValueAsSlice()
-	if cheeses == nil {
+	if !ok {
 		// No slice of cheese
 		// (☞ﾟヮﾟ)☞
 		// ☜(ﾟヮﾟ☜)
-		return
+		panic(`The "cheeses" element does not exist or is not a JSON array`)
 	}
 
 	fmt.Printf("Cheeses (%d):\n", len(cheeses))
@@ -413,7 +446,7 @@ func ExampleJSONNode_simple() {
 		cheese, ok := cheeses[i].ValueAsString()
 		if !ok {
 			// This isn't cheese.
-			return
+			panic(fmt.Sprintf(`Item %d in "cheeses" JSON array is not a string`, i))
 		}
 
 		fmt.Printf("    %s\n", cheese)
@@ -421,14 +454,14 @@ func ExampleJSONNode_simple() {
 
 	meat, ok := jn.Get("with").Get("meat").ValueAsString()
 	if !ok {
-		return
+		panic(`Element "with.meat" does not exist or is not a string`)
 	}
 
 	fmt.Printf("Meat: %s\n", meat)
 
 	fruit, ok := jn.Get("with").Get("fruit").ValueAsSlice()
 	if !ok {
-		return
+		panic(`Element "with.fruit" does not exist or is not a JSON array`)
 	}
 
 	fmt.Printf("Fruit (%d):\n", len(fruit))
@@ -436,12 +469,12 @@ func ExampleJSONNode_simple() {
 	for i := range fruit {
 		fruitNode, ok := fruit[i].ValueAsNode()
 		if !ok {
-			return
+			panic(fmt.Sprintf(`"with.fruit[%d]" is not a JSON object`, i))
 		}
 
 		fruitType, ok := fruitNode.Get("type").ValueAsString()
 		if !ok {
-			return
+			panic(fmt.Sprintf(`"with.fruit[%d].type" does not exist or is not a string`, i))
 		}
 
 		fmt.Printf("    %s\n", fruitType)
@@ -457,4 +490,64 @@ func ExampleJSONNode_simple() {
 	// Fruit (2):
 	//     grapes
 	//     strawberries
+}
+
+func ExampleJSONNode_ValueAsNode() {
+	raw := `{
+    "platter": "slate",
+    "cheeses": ["cheddar", "swiss", "manchego"],
+    "with": {
+        "fruit": [{
+                "type": "grapes",
+                "count": 8
+            },
+            {
+                "type": "strawberries",
+                "count": 3
+            }
+        ],
+        "meat": "prosciutto"
+    }
+}`
+
+	jn := new(JSONNode)
+	err := json.Unmarshal([]byte(raw), jn)
+	if err != nil {
+		panic(err)
+	}
+
+	// Get the "with" member as a *JSONNode
+	with, ok := jn.Get("with").ValueAsNode()
+	if !ok {
+		panic(`No "with" member or its value is not a JavaScript object`)
+	}
+
+	// Get the "with.fruit" member as a slice of *JSONNode
+	fruit, ok := with.Get("fruit").ValueAsSlice()
+	if !ok {
+		panic(`No "fruit" member or its value is not a JavaScript array`)
+	}
+
+	fmt.Printf("Fruit (%d):\n", len(fruit))
+
+	for _, child := range fruit {
+		// Get the "count" member of this element in the "fruit" JSON array
+		count, ok := child.Get("count").ValueAsNumber()
+		if !ok {
+			panic(`No "count" member or its value is not a JavaScript number`)
+		}
+
+		// Get the "type" of this element in the "fruit" JSON array
+		fruitType, ok := child.Get("type").ValueAsString()
+		if !ok {
+			panic(`No "type" member or its value is not a JavaScript string`)
+		}
+
+		fmt.Printf("    %.0f %s\n", count, fruitType)
+	}
+
+	// Output:
+	// Fruit (2):
+	//     8 grapes
+	//     3 strawberries
 }
