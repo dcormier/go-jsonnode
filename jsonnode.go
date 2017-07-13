@@ -1,3 +1,6 @@
+// Package jsonnode provides a simple way to unmarshal arbitrary JSON objects, modify them,
+// then marshal them back to JSON without having to know about the entire object, and with
+// less code than using map[string]interface{}.
 package jsonnode
 
 import "encoding/json"
@@ -136,9 +139,9 @@ func (jn *JSONNode) ValueAsString() (string, bool) {
 	return val, ok
 }
 
-// ValueAsNumber gets the value of the current node as a number.
+// ValueAsFloat64 gets the value of the current node as a float64.
 // Golangs stdlib will unmarshal any numeric JSON object as a float64, so that's what you get.
-func (jn *JSONNode) ValueAsNumber() (float64, bool) {
+func (jn *JSONNode) ValueAsFloat64() (float64, bool) {
 	val, ok := jn.Value().(float64)
 
 	return val, ok

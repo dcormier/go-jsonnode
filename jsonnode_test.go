@@ -9,51 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const nestedJSON string = `{
-    "status": "ok",
-    "installation": {
-        "license_key": null,
-        "entitlement": null,
-        "product": {
-            "id": 103,
-            "name": "Nebula Cloud Console Account",
-            "customer_type": "business",
-            "active": true,
-            "code": "NCCA-B",
-            "two_char_code": "NC",
-            "grace_multiplier": 1.0,
-            "grace_term_days": 0,
-            "is_trial_allowed": false,
-            "trial_duration": 30,
-            "trial_max_volume": 0,
-            "default_key_type": "keystone",
-            "parent_id": null,
-            "allow_grace": false,
-            "enforce_volume": true,
-            "sellable": true,
-            "real_product_codes": null,
-            "created_at": "2017-02-07T18:08:32Z",
-            "updated_at": "2017-02-07T18:08:32Z"
-        },
-        "installation_token": "3SGWHsMh6Sxtcovhgvsz1487266817",
-        "trial_status": "trial_available",
-        "trial_max_volume": 0,
-        "trial_starts_on": null,
-        "trial_ends_on": null,
-        "machine_id": "b4aa12b3-4110-4966-8f4c-ef8ff298d613",
-        "product_id": 103,
-        "notes": null,
-        "product_version": "1.0.0",
-        "product_build": null,
-        "ip_address": "207.98.208.136, 207.98.208.136",
-        "volume_used": 1,
-        "last_contacted_at": "2017-02-16T17:40:17Z",
-        "registered_at": "2017-02-16T17:40:17Z",
-        "redeemed_at": null
-    }
-}`
-
-func TestJSONNode(t *testing.T) {
+func TestJSONNodeUnmarshal(t *testing.T) {
 	t.Parallel()
 
 	toMarshal := make(map[string]interface{})
@@ -126,7 +82,7 @@ func TestJSONNode(t *testing.T) {
 		node := jn.Get("int32")
 		require.NotNil(t, node)
 
-		valFloat64, ok := node.ValueAsNumber()
+		valFloat64, ok := node.ValueAsFloat64()
 		require.True(t, ok)
 		require.Equal(t, float64(-12345), valFloat64)
 
@@ -149,11 +105,11 @@ func TestJSONNode(t *testing.T) {
 		node = node.Get("does not exist")
 		require.Nil(t, node)
 
-		valFloat64, ok = jn.Get("uint32").ValueAsNumber()
+		valFloat64, ok = jn.Get("uint32").ValueAsFloat64()
 		require.True(t, ok)
 		require.Equal(t, float64(12345), valFloat64)
 
-		valFloat64, ok = jn.Get("float32").ValueAsNumber()
+		valFloat64, ok = jn.Get("float32").ValueAsFloat64()
 		require.True(t, ok)
 		require.Equal(t, float64(-123.45), valFloat64)
 
@@ -262,7 +218,7 @@ func TestJSONNode(t *testing.T) {
 			count := fruitNode.Get("count")
 			require.NotNil(t, count)
 
-			countVal, ok := count.ValueAsNumber()
+			countVal, ok := count.ValueAsFloat64()
 			require.True(t, ok)
 
 			switch i {
@@ -276,6 +232,11 @@ func TestJSONNode(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestJSONNodeMarshal(t *testing.T) {
+	t.Parallel()
+
 }
 
 func ExampleJSONNode_thorough() {
@@ -532,7 +493,7 @@ func ExampleJSONNode_ValueAsNode() {
 
 	for _, child := range fruit {
 		// Get the "count" member of this element in the "fruit" JSON array
-		count, ok := child.Get("count").ValueAsNumber()
+		count, ok := child.Get("count").ValueAsFloat64()
 		if !ok {
 			panic(`No "count" member or its value is not a JavaScript number`)
 		}
